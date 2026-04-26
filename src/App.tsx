@@ -34,6 +34,7 @@ export default function App() {
   const [isRecording, setIsRecording] = useState(false);
   const [viewMode, setViewMode] = useState<'editor' | 'prompter'>('editor');
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [midiStatus, setMidiStatus] = useState<'disconnected' | 'connected' | 'error'>('disconnected');
   
   const [settings, setSettings] = useState<TeleprompterSettings>({
     bpm: 120,
@@ -106,6 +107,30 @@ export default function App() {
   };
 
   useEffect(() => {
+    if (navigator.requestMIDIAccess) {
+      navigator.requestMIDIAccess().then((access) => {
+        setMidiStatus('connected');
+        const inputs = access.inputs.values();
+        for (const input of inputs) {
+          input.onmidimessage = (message) => {
+            const [status] = message.data;
+            // MIDI Realtime Messages
+            if (status === 0xFA) { // MIDI START
+              setIsPlaying(true);
+              setIsRecording(true);
+            } else if (status === 0xFB) { // MIDI CONTINUE
+              setIsPlaying(true);
+            } else if (status === 0xFC) { // MIDI STOP
+              setIsPlaying(false);
+              setIsRecording(false);
+            }
+          };
+        }
+      }).catch(() => {
+        setMidiStatus('error');
+      });
+    }
+
     if (isPlaying && scrollContainerRef.current) {
       const scroll = () => {
         if (scrollContainerRef.current && isPlaying) {
@@ -330,8 +355,10 @@ export default function App() {
         <div className="h-14 border-b border-[#1F1F23] bg-[#0A0A0B] px-8 flex items-center justify-between z-10">
           <div className="flex items-center gap-6">
             <div className="flex items-center gap-2">
-              <div className="w-1.5 h-1.5 rounded-full bg-[#F27D26]" />
-              <span className="text-xs font-medium text-[#8E9299]">DAW SYNC MODE</span>
+              <div className={`w-1.5 h-1.5 rounded-full ${midiStatus === 'connected' ? 'bg-green-500' : midiStatus === 'error' ? 'bg-red-500' : 'bg-[#F27D26]'}`} />
+              <span className="text-xs font-medium text-[#8E9299]">
+                {midiStatus === 'connected' ? 'DAW SYNC: READY' : 'DAW SYNC: OFFLINE'}
+              </span>
             </div>
             <div className="h-4 w-px bg-[#1F1F23]" />
             <span className="text-xs font-mono text-white uppercase truncate max-w-[200px]">
